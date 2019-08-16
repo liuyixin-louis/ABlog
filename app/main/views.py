@@ -9,6 +9,29 @@ from .. import cache
 import json
 
 
+def nextPost(post):
+    """
+    获取本篇文章的下一篇
+    :param post: post
+    :return: next post
+    """
+    next_post = Post.query.filter_by(draft=False).filter(Post.id>post.id).order_by(Post.id.asc()).first()
+    if next_post:
+        return next_post
+    return None
+
+def prevPost(post):
+    """
+    获取本篇文章的上一篇
+    :param post: post
+    :return: prev post
+    """
+    prev_post = Post.query.filter_by(draft=False).filter(Post.id<post.id).order_by(Post.id.desc()).first()
+    if prev_post:
+        return prev_post
+    return None
+
+
 def get_post_cache(key):
     """获取博客文章缓存"""
     data = cache.get(key)
@@ -62,57 +85,25 @@ def internal_server_error(e):
     return render_template('error/500.html', title='500'), 500
 
 
+
 @main.route('/')
 @main.route('/index')
 def index():
     page = request.args.get('page', 1, type=int)
     per_page = current_app.config['POSTS_PER_PAGE']
-    pagination = Post.query.filter_by(draft=False).order_by(Post.id.desc()).paginate(
-        page, per_page=per_page,
-        error_out=False)
-    posts = []
-    for post in pagination.items:
-        cache_key = '$#$#'.join(map(str, ['post', post.id]))
-        post = get_post_cache(cache_key)
-        posts.append(post)
+    pagination = Post.query.filter_by(draft=False).order_by(Post.id.desc()).paginate(page, per_page=per_page,error_out=False)
+    posts = pagination.items
     return render_template('main/index.html', title='首页',
                            posts=posts, page=page,
                            pagination=pagination)
 
-def nextPost(post):
-    """
-    获取本篇文章的下一篇
-    :param post: post
-    :return: next post
-    """
-    posts = Post.query.filter_by(draft=False).order_by(Post.id.desc()).all()
-    if posts[-1] != post:
-        next_post = posts[posts.index(post) + 1]
-        return next_post
-    return None
-
-def prevPost(post):
-    """
-    获取本篇文章的上一篇
-    :param post: post
-    :return: prev post
-    """
-    posts = Post.query.filter_by(draft=False).order_by(Post.id.desc()).all()
-    if posts[0] != post:
-        prev_post = posts[posts.index(post) - 1]
-        return prev_post
-    return None
-
 @main.route('/archives/<int:pid>')
-# @cache.cached(timeout=60 * 60 * 24 * 30,query_string=True)
 def post(pid):
     cache_key = '$#$#'.join(map(str, ['post', pid]))
     post = get_post_cache(cache_key)
 
     page = request.args.get('page', 1, type=int)
-    if page == -1:
-        counts = post.get('comment_count', 0)
-        page = (counts - 1) / current_app.config['COMMENTS_PER_PAGE'] + 1
+
     comment_data=get_comments(pid=post['id'],page_id=None,article_id=None,page=page)
 
     pagination=comment_data['pagination']
@@ -144,13 +135,11 @@ def page(page_url):
 def tag(tag_name):
     tag = tag_name
     posts = Post.query.filter_by(draft=False).order_by(Post.id.desc()).all()
-
     return render_template('main/tag.html', tag=tag, posts=posts)
 
 @main.route('/category/<category_name>/')
 def category(category_name):
     category = Category.query.filter_by(category=category_name).first()
-
     posts = Post.query.filter_by(category=category, draft=False).order_by(Post.id.desc()).all()
     return render_template('main/category.html',
                            category=category,
